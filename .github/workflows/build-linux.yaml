@@ -5,6 +5,7 @@ name: 'build-linux'
 on:
   workflow_dispatch:
   push:
+    branches: ['main', 'linux-port']
     tags: ['v*']
 
 permissions:
