@@ -1,106 +1,105 @@
-use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Button, Label, Orientation};
-use glib::clone;
-use std::env;
-use std::process;
+//! Discord Quest Completer – Linux dummy game runner.
+//!
+//! Original project: https://github.com/markterence/discord-quest-completer
+//! (c) 2025 Mark Terence Tiglao – MIT License. Linux runner written for the
+//! Linux port, following the author's goal of a runner of ~100 KB or less.
+//!
+//! On Linux, Discord's game detection scans running processes (/proc) and
+//! matches the executable path/name against its "detectable" list. No window
+//! is needed, so this runner does nothing but stay alive:
+//!   * freestanding `#![no_std]` + `#![no_main]`, raw syscalls, no libc;
+//!   * static ELF of a few KB (vs ~136 KB for the Windows runner);
+//!   * exits on SIGTERM/SIGINT (default action) or when its parent – the
+//!     Discord Quest Completer app – goes away, so it never lingers orphaned.
+//!
+//! Arguments (e.g. `--title <name>`) are accepted and ignored for
+//! compatibility with the other runners.
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    
-    let mut title = "Discord Quest Completer".to_string();
-    let mut start_hidden = false;
-    
-    // Parse arguments
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--title" => {
-                if i + 1 < args.len() {
-                    title = args[i + 1].clone();
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            "--tray" => {
-                start_hidden = true;
-                i += 1;
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
+#![no_std]
+#![no_main]
 
-    let app = Application::builder()
-        .application_id("me.markterence.discordquestcompleter.runner")
-        .build();
+use core::arch::{asm, global_asm};
 
-    let title_clone = title.clone();
-    let start_hidden_clone = start_hidden;
-
-    app.connect_activate(move |app| {
-        build_ui(app, &title_clone, start_hidden_clone);
-    });
-
-    app.run();
+#[cfg(target_arch = "x86_64")]
+mod nr {
+    pub const NANOSLEEP: usize = 35;
+    pub const GETPPID: usize = 110;
+    pub const EXIT_GROUP: usize = 231;
 }
 
-fn build_ui(app: &Application, title_text: &str, start_hidden: bool) {
-    // Create main window
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title(title_text)
-        .default_width(400)
-        .default_height(400)
-        .build();
+#[cfg(target_arch = "aarch64")]
+mod nr {
+    pub const NANOSLEEP: usize = 101;
+    pub const GETPPID: usize = 173;
+    pub const EXIT_GROUP: usize = 94;
+}
 
-    // Create vertical box layout
-    let vbox = Box::new(Orientation::Vertical, 12);
-    vbox.set_margin_top(20);
-    vbox.set_margin_bottom(20);
-    vbox.set_margin_start(20);
-    vbox.set_margin_end(20);
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+compile_error!("src-linux supports only x86_64 and aarch64");
 
-    // App title label
-    let app_label = Label::new(Some("Discord Quest Completer"));
-    app_label.add_css_class("title-1");
-    vbox.append(&app_label);
+// Entry point: align the stack, then call `runner_main`.
+#[cfg(target_arch = "x86_64")]
+global_asm!(
+    ".globl _start",
+    "_start:",
+    "xor ebp, ebp",
+    "and rsp, -16",
+    "call {main}",
+    "ud2",
+    main = sym runner_main,
+);
 
-    // Game title label
-    let title_label = Label::new(Some(title_text));
-    title_label.add_css_class("title-2");
-    title_label.set_margin_top(20);
-    vbox.append(&title_label);
+#[cfg(target_arch = "aarch64")]
+global_asm!(
+    ".globl _start",
+    "_start:",
+    "mov x29, #0",
+    "mov x30, #0",
+    "bl {main}",
+    "brk #0",
+    main = sym runner_main,
+);
 
-    // Description label
-    let desc_label = Label::new(Some("This program is part of the Discord Quest Completer"));
-    desc_label.set_margin_top(20);
-    vbox.append(&desc_label);
+#[inline(always)]
+unsafe fn syscall2(n: usize, a1: usize, a2: usize) -> isize {
+    let ret: isize;
+    #[cfg(target_arch = "x86_64")]
+    asm!("syscall", inlateout("rax") n as isize => ret, in("rdi") a1, in("rsi") a2,
+         lateout("rcx") _, lateout("r11") _, options(nostack));
+    #[cfg(target_arch = "aarch64")]
+    asm!("svc 0", in("x8") n, inlateout("x0") a1 as isize => ret, in("x1") a2,
+         options(nostack));
+    ret
+}
 
-    // GitHub link button
-    let link_button = Button::with_label("Source on Github");
-    link_button.set_margin_top(40);
-    
-    link_button.connect_clicked(|_| {
-        let _ = open::that("https://github.com/markterence/discord-quest-completer");
-    });
-    
-    vbox.append(&link_button);
+#[repr(C)]
+struct Timespec {
+    tv_sec: isize,
+    tv_nsec: isize,
+}
 
-    // Quit button
-    let quit_button = Button::with_label("Quit");
-    quit_button.set_margin_top(10);
-    
-    quit_button.connect_clicked(clone!(@weak window => move |_| {
-        window.close();
-    }));
-    
-    vbox.append(&quit_button);
+fn exit(code: usize) -> ! {
+    unsafe { syscall2(nr::EXIT_GROUP, code, 0) };
+    loop {}
+}
 
-    window.set_child(Some(&vbox));
+fn getppid() -> isize {
+    unsafe { syscall2(nr::GETPPID, 0, 0) }
+}
 
-    if !start_hidden {
-        window.present();
+extern "C" fn runner_main() -> ! {
+    let parent = getppid();
+    let interval = Timespec { tv_sec: 2, tv_nsec: 0 };
+    loop {
+        unsafe { syscall2(nr::NANOSLEEP, &interval as *const _ as usize, 0) };
+        // Parent (the app) exited -> we were re-parented: stop pretending.
+        if getppid() != parent {
+            exit(0);
+        }
     }
+}
+
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! {
+    exit(1)
 }

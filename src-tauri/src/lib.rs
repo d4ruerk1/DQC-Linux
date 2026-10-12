@@ -4,6 +4,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+#[cfg(target_os = "linux")]
+use std::collections::HashMap;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Listener, Manager};
 
 mod rpc;
@@ -14,6 +16,53 @@ static DISCORD_CLIENT: OnceCell<Mutex<Option<rpc::Client>>> = OnceCell::new();
 
 fn get_discord_client() -> &'static Mutex<Option<rpc::Client>> {
     DISCORD_CLIENT.get_or_init(|| Mutex::new(None))
+}
+
+// Linux: dummy runners spawned by this app, keyed by executable name, so that
+// "Stop" kills exactly our processes instead of pattern-matching with pkill.
+#[cfg(target_os = "linux")]
+static LINUX_RUNNERS: OnceCell<Mutex<HashMap<String, Vec<std::process::Child>>>> =
+    OnceCell::new();
+
+#[cfg(target_os = "linux")]
+fn linux_runners() -> &'static Mutex<HashMap<String, Vec<std::process::Child>>> {
+    LINUX_RUNNERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Directory that contains the `games/` folder with the dummy executables.
+///
+/// * Windows/macOS: next to the app executable (original behaviour, portable).
+/// * Linux: the app is usually installed in a read-only location (`/usr/bin`
+///   via pacman/deb/rpm, or a read-only AppImage mount), so use the per-user
+///   data dir: `$XDG_DATA_HOME/me.markterence.discordquestcompleter`
+///   (default `~/.local/share/me.markterence.discordquestcompleter`).
+fn games_base_dir(handle: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(target_os = "linux")]
+    {
+        return handle
+            .path()
+            .app_local_data_dir()
+            .map_err(|e| format!("Failed to resolve app data dir: {}", e));
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = handle;
+        let exe_path: PathBuf = env::current_exe().unwrap_or_default();
+        Ok(exe_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default())
+    }
+}
+
+/// Reject absolute paths and `..` components coming from the game list, so a
+/// malformed entry can never write outside the `games/` folder.
+fn is_safe_relative(path: &str) -> bool {
+    use std::path::Component;
+    Path::new(path)
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
 }
 
 fn runner_resource_name() -> &'static str {
@@ -50,10 +99,33 @@ fn game_folder_path(exe_dir: &Path, path: &str, app_id: i64) -> PathBuf {
 }
 
 fn resolve_runner_template(handle: &AppHandle) -> Result<PathBuf, String> {
-    handle
+    let resolved = handle
         .path()
         .resolve(runner_resource_name(), BaseDirectory::Resource)
-        .map_err(|e| format!("Failed to resolve runner template: {}", e))
+        .map_err(|e| format!("Failed to resolve runner template: {}", e));
+
+    #[cfg(target_os = "linux")]
+    {
+        // Distro packages (e.g. the Arch/CachyOS PKGBUILD) install the runner
+        // in a fixed location; also support a runner next to the binary.
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(p) = &resolved {
+            candidates.push(p.clone());
+        }
+        if let Ok(custom) = env::var("DQC_RUNNER_PATH") {
+            candidates.insert(0, PathBuf::from(custom));
+        }
+        candidates.push(PathBuf::from("/usr/lib/discord-quest-completer/src-linux"));
+        if let Some(dir) = env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
+            candidates.push(dir.join("data/src-linux"));
+            candidates.push(dir.join("resources/src-linux"));
+        }
+        if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+            return Ok(found);
+        }
+    }
+
+    resolved
 }
 
 fn make_macos_app_bundle(
@@ -145,12 +217,13 @@ async fn create_fake_game(
     app_id: i64,
     display_name: Option<String>,
 ) -> Result<String, String> {
-    // Must create in the same directory as the executable to avoid permission issues
-    // Get the executable directory to look for config file
-    let exe_path: std::path::PathBuf = env::current_exe().unwrap_or_default();
-    let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
+    // Windows/macOS: next to the executable. Linux: per-user data dir.
+    if !is_safe_relative(path) || !is_safe_relative(executable_name) {
+        return Err(format!("Refusing unsafe game path: {}/{}", path, executable_name));
+    }
+    let exe_dir = games_base_dir(&handle)?;
 
-    let game_folder_path = game_folder_path(exe_dir, path, app_id);
+    let game_folder_path = game_folder_path(&exe_dir, path, app_id);
 
     println!("Game folder path: {:?}", game_folder_path);
     println!(
@@ -229,16 +302,19 @@ fn launch_macos_app_bundle(app_bundle_path: &Path, title: &str) -> Result<(), St
 
 #[tauri::command(rename_all = "snake_case")]
 async fn run_background_process(
+    handle: tauri::AppHandle,
     name: &str,
     path: &str,
     executable_name: &str,
     path_len: i64,
     app_id: i64,
 ) -> Result<String, String> {
-    let exe_path = env::current_exe().unwrap_or_default();
-    let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
+    if !is_safe_relative(path) || !is_safe_relative(executable_name) {
+        return Err(format!("Refusing unsafe game path: {}/{}", path, executable_name));
+    }
+    let exe_dir = games_base_dir(&handle)?;
 
-    let game_folder_path = game_folder_path(exe_dir, path, app_id);
+    let game_folder_path = game_folder_path(&exe_dir, path, app_id);
 
     if is_app_bundle(executable_name) {
         #[cfg(target_os = "macos")]
@@ -268,6 +344,31 @@ async fn run_background_process(
         cmd.process_group(0); // Create new process group on Unix
     }
     
+    #[cfg(target_os = "linux")]
+    {
+        // Discord on Linux matches the process path (from /proc), so spawn by
+        // absolute path and keep the child handle so it can be stopped.
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        return match cmd.spawn() {
+            Ok(child) => {
+                linux_runners()
+                    .lock()
+                    .unwrap()
+                    .entry(executable_name.to_string())
+                    .or_default()
+                    .push(child);
+                Ok("Process started successfully".to_string())
+            }
+            Err(e) => Err(format!(
+                "Failed to start process {:?}: {}",
+                executable_path, e
+            )),
+        };
+    }
+
+    #[cfg(not(target_os = "linux"))]
     match cmd.spawn() {
         Ok(_) => Ok("Process started successfully".to_string()),
         Err(e) => Err(format!("Failed to start process: {}", e)),
@@ -329,21 +430,18 @@ async fn stop_process(exec_name: String) -> Result<(), String> {
     }
     #[cfg(target_os = "linux")]
     {
-        let output = std::process::Command::new("pkill")
-            .arg("-f")
-            .arg(&exec_name)
-            .output()
-            .map_err(|e| format!("Failed to execute pkill: {}", e))?;
-
-        if output.status.success() || output.status.code() == Some(1) {
-            // pkill returns 1 if no processes were killed, which is fine
-            Ok(())
-        } else {
-            Err(format!(
-                "Failed to stop process: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ))
+        let _ = process_name;
+        let children = linux_runners()
+            .lock()
+            .unwrap()
+            .remove(&exec_name)
+            .unwrap_or_default();
+        for mut child in children {
+            // Already exited is fine; always reap to avoid zombies.
+            let _ = child.kill();
+            let _ = child.wait();
         }
+        Ok(())
     }
 }
 

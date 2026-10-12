@@ -1,0 +1,87 @@
+# Maintainer: Dav (d4ruerk1) <d4ruerk1@users.noreply.github.com>          (Linux port / packaging)
+# Upstream author: Mark Terence Tiglao      https://github.com/markterence/discord-quest-completer
+#
+# Arch Linux / CachyOS package for the Linux port of Discord Quest Completer.
+# Build:   makepkg -si
+# Local checkout build (no release tag needed):  ./build-local.sh
+
+_ghuser=d4ruerk1
+pkgname=discord-quest-completer
+pkgver=25.10.7
+pkgrel=1
+pkgdesc="Unofficial tool that simulates games for Discord Quests (Linux port, not affiliated with Discord)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/${_ghuser}/discord-quest-completer"
+license=('MIT')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libsoup3'
+  'glib2'
+  'cairo'
+  'pango'
+  'gdk-pixbuf2'
+  'openssl'
+  'hicolor-icon-theme'
+  'gcc-libs'
+  'glibc'
+)
+makedepends=('rust' 'nodejs' 'npm' 'git')
+optdepends=(
+  'discord: native Discord client (game detection needs the native, non-Flatpak client)'
+  'xdg-utils: open links from the app'
+)
+# LTO from makepkg.conf (enabled by default on CachyOS) breaks some Rust/C
+# mixed crates; Rust already uses its own LTO in the release profile.
+options=('!lto' '!debug')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')   # replace with the real checksum: updpkgsums
+
+_pnpm() { npx --yes pnpm@8.15.3 "$@"; }   # pinned to upstream's packageManager
+
+prepare() {
+  cd "${pkgname}-${pkgver}"
+  export CARGO_HOME="${srcdir}/cargo-home"
+  _pnpm install --frozen-lockfile
+  cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+  cargo fetch --locked --manifest-path src-linux/Cargo.toml
+}
+
+build() {
+  cd "${pkgname}-${pkgver}"
+  export CARGO_HOME="${srcdir}/cargo-home"
+  export CARGO_TARGET_DIR="${PWD}/target"
+
+  # 1) tiny dummy game runner (freestanding static ELF, ~1-2 KB)
+  cargo build --frozen --release --manifest-path src-linux/Cargo.toml
+  install -Dm755 target/release/src-linux src-tauri/resources/src-linux
+
+  # 2) Tauri app (frontend is built by beforeBuildCommand)
+  _pnpm tauri build --no-bundle -- --frozen
+}
+
+package() {
+  cd "${pkgname}-${pkgver}"
+
+  install -Dm755 target/release/discord-quest-completer \
+    "${pkgdir}/usr/bin/discord-quest-completer"
+  install -Dm755 target/release/src-linux \
+    "${pkgdir}/usr/lib/discord-quest-completer/src-linux"
+
+  install -Dm644 packaging/linux/discord-quest-completer.desktop \
+    "${pkgdir}/usr/share/applications/discord-quest-completer.desktop"
+  install -Dm644 src-tauri/icons/32x32.png \
+    "${pkgdir}/usr/share/icons/hicolor/32x32/apps/discord-quest-completer.png"
+  install -Dm644 src-tauri/icons/128x128.png \
+    "${pkgdir}/usr/share/icons/hicolor/128x128/apps/discord-quest-completer.png"
+  install -Dm644 src-tauri/icons/128x128@2x.png \
+    "${pkgdir}/usr/share/icons/hicolor/256x256/apps/discord-quest-completer.png"
+  install -Dm644 src-tauri/icons/icon.png \
+    "${pkgdir}/usr/share/icons/hicolor/512x512/apps/discord-quest-completer.png"
+
+  # MIT: the copyright + permission notice must ship with every copy
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 NOTICE.md "${pkgdir}/usr/share/licenses/${pkgname}/NOTICE.md"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 CREDITS.md "${pkgdir}/usr/share/doc/${pkgname}/CREDITS.md"
+}

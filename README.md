@@ -2,6 +2,13 @@
   <h1 align="center">Discord Quest Completer</h1>
 </p>
 
+> [!NOTE]
+> **This is an unofficial fork that adds Linux support (Arch Linux / CachyOS `pacman` package).**
+> The original project is [markterence/discord-quest-completer](https://github.com/markterence/discord-quest-completer)
+> by **Mark Terence Tiglao**, released under the MIT License. All credit for the application goes to the original author;
+> this fork only adds the Linux runner, Linux backend changes and packaging. See [CREDITS.md](CREDITS.md) and [NOTICE.md](NOTICE.md).
+> Please report Linux-specific issues **here**, not upstream. Not affiliated with, endorsed by, or connected to Discord Inc.
+
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/markterence/discord-quest-completer/build-release.yaml?branch=main&style=flat&label=build%20(release))
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/markterence/discord-quest-completer/rust-check.yml?branch=main&style=flat&label=scheduled%20build%20%28every%202%20days%29)](https://github.com/markterence/discord-quest-completer/actions/workflows/rust-check.yml?query=branch%3Amain+event%3Aschedule)
 
@@ -132,13 +139,48 @@ The dummy game executale files used by this program are placed in a folder calle
   <img src="https://hoshizora.markterence.me/github-stargazers/markterence/discord-quest-completer?show_usernames=1&v=1" align="center" alt="stargazers"/>
 </p>
 
+### 🐧 Linux – Arch Linux / CachyOS (pacman)
+
+Download `discord-quest-completer-*.pkg.tar.zst` from this fork's Releases and install it:
+
+```bash
+sudo pacman -U discord-quest-completer-*.pkg.tar.zst
+```
+
+Or build it yourself from the PKGBUILD:
+
+```bash
+git clone https://github.com/d4ruerk1/discord-quest-completer
+cd discord-quest-completer
+packaging/arch/build-local.sh -si      # builds from the current checkout and installs
+```
+
+Notes for Linux:
+
+- Use the **native** Discord client (`discord`, `discord-canary`, `discord-ptb`, or Vesktop/arRPC with game detection enabled). The **Flatpak** Discord is sandboxed: it cannot see host processes and uses a different IPC socket path, so detection and Rich Presence usually don't work.
+- Dummy games are created in `~/.local/share/me.markterence.discordquestcompleter/games/` (the install dir `/usr` is read-only).
+- If the window is blank on NVIDIA/Wayland, the app already sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`; you can also try `GDK_BACKEND=x11 discord-quest-completer`.
+- Custom runner location: set `DQC_RUNNER_PATH=/path/to/src-linux`.
+
 ---
 
 ## 🖥️ Supported Platforms
 
 - Windows 11 (not tested on Windows 10 but it should work)
+- Linux x86_64 / aarch64 (this fork; packaged for Arch Linux and CachyOS)
 
-### 🐧 Linux and 🍎 MacOS Support?
+### 🐧 How Linux support works in this fork
+
+The original author's requirement (quoted below) was a dummy runner of **~100 KB or less**. On Linux, Discord detects games by scanning
+running processes (`/proc`) and matching the executable path/name against its *detectable* list, so **no window is needed**
+(and therefore no GTK/Wine/WebView2 either). The Linux runner (`src-linux/`) is a freestanding `#![no_std]` Rust program that uses
+raw syscalls and just stays alive: a **static ELF of about 1 KB** (vs 136 KB on Windows). It exits when stopped from the app or
+when the app itself closes. The app copies it under the game's expected path (Windows `.exe` names are used as a fallback when
+Discord has no Linux executable registered, which is how Wine/Proton games are matched).
+
+The original text from the upstream author is kept below for reference.
+
+### 🐧 Linux and 🍎 MacOS Support? (original upstream text)
 
 _TL;DR: Linux and macOS are not supported._
 
@@ -253,7 +295,8 @@ See the guide here: https://gist.github.com/aamiaa/204cd9d42013ded9faf646fae7f89
 
 ## License
 
-[MIT License](LICENSE)© Mark Terence Tiglao - 2025
+[MIT License](LICENSE) © Mark Terence Tiglao - 2025 (original work).
+Linux port and packaging © 2026 Dav (d4ruerk1), also under the MIT License. See [NOTICE.md](NOTICE.md).
 
 ---
 

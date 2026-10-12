@@ -8,8 +8,12 @@
             Select an executable to launch:
         </h3>
 
+        <p v-if="isLinux" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            On Linux a tiny background process (no window) is started; Discord detects it from the process list.
+        </p>
+
         <p v-if="usingCrossPlatformFallback" class="text-xs mt-2 text-amber-600 dark:text-amber-400">
-            No macOS executable is registered for this game. Using the Windows executable name as a fallback.
+            No {{ isMac ? 'macOS' : 'Linux' }} executable is registered for this game. Using the Windows executable name as a fallback.
         </p>
 
         <p v-if="filteredExecutables.length === 0" class="text-sm mt-2 text-yellow-500">
@@ -84,6 +88,7 @@ const validExecutables = computed(() =>
 const currentPlatform = getCurrentOS();
 
 const isMac = isMacOS();
+const isLinux = currentPlatform === EXECUTABLE_OS.LINUX;
 
 const filteredExecutables = computed(() => {
     const platformMatches = validExecutables.value.filter(

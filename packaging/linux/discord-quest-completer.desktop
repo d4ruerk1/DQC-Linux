@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Discord Quest Completer
+GenericName=Discord Quest helper
+Comment=Unofficial tool that simulates games for Discord Quests (not affiliated with Discord)
+Exec=discord-quest-completer
+Icon=discord-quest-completer
+Terminal=false
+Categories=Utility;Game;
+Keywords=discord;quest;rpc;
+StartupWMClass=discord-quest-completer
