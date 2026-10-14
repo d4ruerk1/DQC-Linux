@@ -115,7 +115,8 @@ fn resolve_runner_template(handle: &AppHandle) -> Result<PathBuf, String> {
         if let Ok(custom) = env::var("DQC_RUNNER_PATH") {
             candidates.insert(0, PathBuf::from(custom));
         }
-        candidates.push(PathBuf::from("/usr/lib/discord-quest-completer/src-linux"));
+        candidates.push(PathBuf::from("/usr/lib/dqc-linux/src-linux"));
+        candidates.push(PathBuf::from("/usr/lib/discord-quest-completer/src-linux")); // pre-1.0.1 installs
         if let Some(dir) = env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
             candidates.push(dir.join("data/src-linux"));
             candidates.push(dir.join("resources/src-linux"));

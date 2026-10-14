@@ -926,23 +926,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "discord-quest-completer"
-version = "25.10.7"
-dependencies = [
- "discord-sdk",
- "once_cell",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-http",
- "tauri-plugin-opener",
- "tokio",
-]
-
-[[package]]
 name = "discord-sdk"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1050,6 +1033,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f25c0e292a7ca6d6498557ff1df68f32c99850012b6ea401cf8daf771f22ff53"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "dqc-linux"
+version = "1.0.1"
+dependencies = [
+ "discord-sdk",
+ "once_cell",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-http",
+ "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]

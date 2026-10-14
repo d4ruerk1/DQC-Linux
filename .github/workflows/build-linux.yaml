@@ -5,7 +5,7 @@ name: 'build-linux'
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags: ['v*', '[0-9]*']
 
 permissions:
   contents: write
@@ -31,7 +31,7 @@ jobs:
 
       - name: Check runner size (author goal: <= 100 KB)
         run: |
-          size=$(stat -c %s packaging/arch/src/discord-quest-completer-*/target/release/src-linux)
+          size=$(stat -c %s packaging/arch/src/DQC-Linux-*/target/release/src-linux)
           echo "src-linux runner: ${size} bytes"
           test "$size" -le 102400
 
@@ -50,4 +50,4 @@ jobs:
           body: |
             Unofficial Linux port of [markterence/discord-quest-completer](https://github.com/markterence/discord-quest-completer) (MIT).
             Not affiliated with, endorsed by, or connected to Discord Inc. Using it may violate Discord's Terms/Quest rules: use at your own risk.
-            Install on Arch/CachyOS: `sudo pacman -U discord-quest-completer-*.pkg.tar.zst`
+            Install on Arch/CachyOS: `sudo pacman -U dqc-linux-*.pkg.tar.zst`

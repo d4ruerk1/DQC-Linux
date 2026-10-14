@@ -139,19 +139,23 @@ The dummy game executale files used by this program are placed in a folder calle
   <img src="https://hoshizora.markterence.me/github-stargazers/markterence/discord-quest-completer?show_usernames=1&v=1" align="center" alt="stargazers"/>
 </p>
 
-### 🐧 Linux – Arch Linux / CachyOS (pacman)
+### 🐧 Linux – DQC Linux 1.0.1
 
-Download `discord-quest-completer-*.pkg.tar.zst` from this fork's Releases and install it:
+**AppImage (any distro):** download `DQC_Linux_1.0.1_amd64.AppImage`, then `chmod +x` and run it.
+
+#### Arch Linux / CachyOS (pacman)
+
+Download `dqc-linux-*.pkg.tar.zst` from this fork's Releases and install it:
 
 ```bash
-sudo pacman -U discord-quest-completer-*.pkg.tar.zst
+sudo pacman -U dqc-linux-*.pkg.tar.zst
 ```
 
 Or build it yourself from the PKGBUILD:
 
 ```bash
-git clone https://github.com/d4ruerk1/discord-quest-completer
-cd discord-quest-completer
+git clone https://github.com/d4ruerk1/DQC-Linux
+cd DQC-Linux
 packaging/arch/build-local.sh -si      # builds from the current checkout and installs
 ```
 
@@ -159,7 +163,7 @@ Notes for Linux:
 
 - Use the **native** Discord client (`discord`, `discord-canary`, `discord-ptb`, or Vesktop/arRPC with game detection enabled). The **Flatpak** Discord is sandboxed: it cannot see host processes and uses a different IPC socket path, so detection and Rich Presence usually don't work.
 - Dummy games are created in `~/.local/share/me.markterence.discordquestcompleter/games/` (the install dir `/usr` is read-only).
-- If the window is blank on NVIDIA/Wayland, the app already sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`; you can also try `GDK_BACKEND=x11 discord-quest-completer`.
+- If the window is blank on NVIDIA/Wayland, the app already sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`; you can also try `GDK_BACKEND=x11 dqc-linux`.
 - Custom runner location: set `DQC_RUNNER_PATH=/path/to/src-linux`.
 
 ---

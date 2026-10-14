@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Discord Quest Completer
+Name=DQC Linux
 GenericName=Discord Quest helper
 Comment=Unofficial tool that simulates games for Discord Quests (not affiliated with Discord)
-Exec=discord-quest-completer
-Icon=discord-quest-completer
+Exec=dqc-linux
+Icon=dqc-linux
 Terminal=false
 Categories=Utility;Game;
 Keywords=discord;quest;rpc;
-StartupWMClass=discord-quest-completer
+StartupWMClass=dqc-linux
